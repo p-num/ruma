@@ -306,6 +306,67 @@ mod tests {
     }
 
     #[test]
+    fn aliasless_livekit_focus_preserves_room_call_memberships() {
+        for (content, focus_path) in [
+            (create_call_member_event_content(), "/foci_preferred/0"),
+            (create_call_member_legacy_event_content(), "/memberships/0/foci_active/0"),
+        ] {
+            let mut json = serde_json::to_value(content).unwrap();
+            json.pointer_mut(focus_path).unwrap().as_object_mut().unwrap().remove("livekit_alias");
+            let parsed: CallMemberEventContent = from_json_value(json.clone()).unwrap();
+            assert_eq!(parsed.memberships().len(), 1);
+            assert!(parsed.memberships()[0].is_room_call());
+            json.pointer_mut(focus_path)
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .insert("livekit_alias".to_owned(), json!(""));
+            assert_eq!(serde_json::to_value(parsed).unwrap(), json);
+        }
+    }
+
+    #[test]
+    fn explicit_livekit_alias_is_preserved() {
+        let json = serde_json::to_value(create_call_member_event_content()).unwrap();
+        let parsed: CallMemberEventContent = from_json_value(json.clone()).unwrap();
+        let memberships = parsed.memberships();
+        let Focus::Livekit(focus) = &memberships[0].foci_preferred()[0];
+        assert_eq!(focus.alias, "1");
+        assert_eq!(serde_json::to_value(parsed).unwrap(), json);
+    }
+
+    #[test]
+    fn malformed_livekit_focus_does_not_create_membership() {
+        for field in ["livekit_alias", "livekit_service_url"] {
+            for invalid in [JsonValue::Null, json!(42), json!({})] {
+                let mut json = serde_json::to_value(create_call_member_event_content()).unwrap();
+                json["foci_preferred"][0][field] = invalid;
+                let parsed: CallMemberEventContent = from_json_value(json).unwrap();
+                assert!(parsed.memberships().is_empty());
+            }
+        }
+        let mut json = serde_json::to_value(create_call_member_event_content()).unwrap();
+        let focus = json["foci_preferred"][0].as_object_mut().unwrap();
+        focus.remove("livekit_alias");
+        focus.remove("livekit_service_url");
+        let parsed: CallMemberEventContent = from_json_value(json).unwrap();
+        assert!(parsed.memberships().is_empty());
+    }
+
+    #[test]
+    fn aliasless_livekit_focus_still_expires_and_leaves() {
+        let mut json = serde_json::to_value(create_call_member_event_content()).unwrap();
+        json["foci_preferred"][0].as_object_mut().unwrap().remove("livekit_alias");
+        json["created_ts"] = json!(0);
+        let parsed: CallMemberEventContent = from_json_value(json).unwrap();
+        assert_eq!(parsed.memberships().len(), 1);
+        assert!(parsed.active_memberships(None).is_empty());
+
+        let left: CallMemberEventContent = from_json_value(json!({})).unwrap();
+        assert!(left.active_memberships(None).is_empty());
+    }
+
+    #[test]
     fn serialize_call_member_event_content() {
         let call_member_event = &json!({
             "application": "m.call",
