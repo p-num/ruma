@@ -22,7 +22,7 @@ pub enum Focus {
 #[cfg_attr(not(ruma_unstable_exhaustive_types), non_exhaustive)]
 pub struct LivekitFocus {
     /// The alias where the LiveKit sessions can be reached.
-    #[serde(rename = "livekit_alias")]
+    #[serde(default, rename = "livekit_alias")]
     pub alias: String,
 
     /// The URL of the JWT service for the LiveKit instance.
